@@ -16,4 +16,4 @@ rem WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 rem See the License for the specific language governing permissions and
 rem limitations under the License.
 
-dotnet pack --configuration Release -p:PackageVersion=0.7.1 --output .. Nagoya.LifelongLearningCenter
+dotnet pack --configuration Release -p:PackageVersion=0.7.2 --output .. Nagoya.LifelongLearningCenter
