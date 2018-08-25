@@ -1,7 +1,14 @@
 # Nagoya LifelongLearningCenter information fetcher.
 
+## Status
+
+| Title | Status |
+|:----|:----|
+| NuGet | [![NuGet](https://img.shields.io/nuget/v/Nagoya.LifelongLearningCenter.svg?style=flat)](https://www.nuget.org/packages/Nagoya.LifelongLearningCenter) |
+
 ## What is this?
 * Nagoya LifelongLearningCenter information fetcher.
+  * The learning center is in Nagoya, Japan.
 * Totally perfect concurrent fetching process using reactive extension.
 
 ```csharp
@@ -41,6 +48,8 @@ public struct Schedule
 * Under Apache v2 http://www.apache.org/licenses/LICENSE-2.0
 
 ## History
+* 0.7.2:
+  * Add xml comment files.
 * 0.7.1:
   * First release
   * Supported .NET Standard 2.0, .NET Core 2.0 and .NET Framework 4.6.
