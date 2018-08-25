@@ -8,7 +8,7 @@
 
 ## What is this?
 * Nagoya LifelongLearningCenter information fetcher.
-  * The learning center is in Nagoya, Japan.
+  * [The learning center is in Nagoya, Japan.](https://www.suisin.city.nagoya.jp/system/institution/index.cgi)
 * Totally perfect concurrent fetching process using reactive extension.
 
 ```csharp
