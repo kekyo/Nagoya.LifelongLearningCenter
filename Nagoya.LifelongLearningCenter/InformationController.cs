@@ -39,14 +39,34 @@ namespace Nagoya.LifelongLearningCenter
         private static readonly TimeZoneInfo tzInfo =
             TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time");
 
-        private static async ValueTask<XDocument> LoadFromUrlAsync(Uri url)
+        /// <summary>
+        /// This is the fetching event. For debugging purpose.
+        /// </summary>
+        public static event FetchingEventDelegate Fetching;
+
+        /// <summary>
+        /// This is the fetched event. For debugging purpose.
+        /// </summary>
+        public static event FetchedEventDelegate Fetched;
+
+        private static async Task<XDocument> LoadFromUrlAsync(Uri url)
         {
-            Console.WriteLine("Downloading: {0}", url);
             using (var httpClient = new HttpClient())
             {
-                using (var hs = await httpClient.GetStreamAsync(url))
+                Fetching?.Invoke(null, new FetchingEventArgs(url));
+                try
                 {
-                    return SgmlReader.Parse(hs);
+                    using (var hs = await httpClient.GetStreamAsync(url))
+                    {
+                        var document = SgmlReader.Parse(hs);
+                        Fetched?.Invoke(null, new FetchedEventArgs(url, document, null));
+                        return document;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Fetched?.Invoke(null, new FetchedEventArgs(url, null, ex));
+                    throw;
                 }
             }
         }
@@ -63,28 +83,28 @@ namespace Nagoya.LifelongLearningCenter
             }
         }
 
-        private static async ValueTask<Anchor[]> LoadAnchorsAsync(Uri url, string xpath)
+        private static async Task<Anchor[]> LoadAnchorsAsync(Uri url, string xpath)
         {
             var document = await LoadFromUrlAsync(url);
             var aa =
                 (from a in document.XPathSelectElements(xpath)
-                    where !string.IsNullOrWhiteSpace(a.Value)
-                    let href = (string)a.Attribute("href")
-                    where !string.IsNullOrWhiteSpace(href) && href.StartsWith("./index.cgi")
-                    select new Anchor(a.Value, new Uri(baseUrl, href)))
+                where !string.IsNullOrWhiteSpace(a.Value)
+                let href = (string)a.Attribute("href")
+                where !string.IsNullOrWhiteSpace(href) && href.StartsWith("./index.cgi")
+                select new Anchor(a.Value, new Uri(baseUrl, href)))
                 .ToArray();
             return aa;
         }
 
-        private static async ValueTask<(XDocument, Anchor[])> LoadMonthAnchorsAsync(Uri url)
+        private static async Task<(XDocument, Anchor[])> LoadMonthAnchorsAsync(Uri url)
         {
             var document = await LoadFromUrlAsync(url);
             var aa =
                 (from a in document.XPathSelectElements("//div[@class='datelink']/ul/li/a")
-                    where !string.IsNullOrWhiteSpace(a.Value)
-                    let href = (string)a.Attribute("href")
-                    where !string.IsNullOrWhiteSpace(href) && href.StartsWith("./index.cgi")
-                    select new Anchor(a.Value, new Uri(baseUrl, href)))
+                where !string.IsNullOrWhiteSpace(a.Value)
+                let href = (string)a.Attribute("href")
+                where !string.IsNullOrWhiteSpace(href) && href.StartsWith("./index.cgi")
+                select new Anchor(a.Value, new Uri(baseUrl, href)))
                 .ToArray();
             return (document, aa);
         }
@@ -124,54 +144,53 @@ namespace Nagoya.LifelongLearningCenter
                 (from tableEntry in
                     baseDiv.XPathSelectElements("div[@class='institution02']/table")
                         .Select((table, i) => new { table, half = i })
-                    from trEntry in
+                from trEntry in
                     tableEntry.table.XPathSelectElements("tr").Skip(2).Take(3)
                         .Select((tr, i) => new { tr, timeSlot = (TimeSlot)i })
-                    from imgEntry in
+                from imgEntry in
                     trEntry.tr.XPathSelectElements("td[@class='center']/img")
                         .Select((img, i) => new { img, date = dateBase.AddDays(i + tableEntry.half * 16) })
-                    let status = GetStatus((string)imgEntry.img.Attribute("src"))
-                    orderby imgEntry.date, trEntry.timeSlot
-                    select new ScheduleDetail(imgEntry.date, trEntry.timeSlot, status))
+                let status = GetStatus((string)imgEntry.img.Attribute("src"))
+                orderby imgEntry.date, trEntry.timeSlot
+                select new ScheduleDetail(imgEntry.date, trEntry.timeSlot, status))
                 .ToArray();
             return aa;
         }
 
-        private static async ValueTask<ScheduleDetail[]> LoadSchedulesAsync(Uri url)
+        private static async Task<ScheduleDetail[]> LoadSchedulesAsync(Uri url)
         {
             var document = await LoadFromUrlAsync(url);
             return ExtractSchedules(document);
         }
 
         /// <summary>
-        /// Fetch current schedules with reactive.
+        /// Fetch current schedules on concurrent.
         /// </summary>
         /// <param name="softDelay">Scraping delays.</param>
         /// <returns>Observable for schedule informations.</returns>
-        public static IObservable<Schedule> FetchSchedules(TimeSpan softDelay)
+        public static IObservable<Schedule> FetchSchedulesOnConcurrent(TimeSpan softDelay)
         {
             return
                 from centerAnchors in
                     LoadAnchorsAsync(new Uri(baseUrl, "index.cgi"), "//table/tr/td/a")
-                    .AsTask()
                     .ToObservable()
                     .Delay(softDelay)
                 from centerAnchor in
-                    centerAnchors.ToObservable().Delay(softDelay)
+                    centerAnchors
+                    .ToObservable()
+                    .Synchronize()      // Suppress a lot of requests on concurrent
                 let centerName = centerAnchor.Value
                 from roomAnchors in
                     LoadAnchorsAsync(centerAnchor.Url, "//th[@class='roomth']/a")
-                    .AsTask()
                     .ToObservable()
                     .Delay(softDelay)
                 from roomAnchor in
                     roomAnchors
                     .ToObservable()
-                    .Delay(softDelay)
+                    .Synchronize()      // Suppress a lot of requests on concurrent
                 let roomName = roomAnchor.Value
                 from roomByMonthAnchorsEntry in
                     LoadMonthAnchorsAsync(roomAnchor.Url)
-                    .AsTask()
                     .ToObservable()
                     .Delay(softDelay)
                 let roomByMonthAnchor0 = roomByMonthAnchorsEntry.Item1
@@ -182,44 +201,42 @@ namespace Nagoya.LifelongLearningCenter
                     .Concat(
                         roomByMonthAnchors
                         .ToObservable()
-                        .Delay(softDelay)
                         .SelectMany(roomByMonthAnchor =>
                             LoadSchedulesAsync(roomByMonthAnchor.Url)
-                            .AsTask()
-                            .ToObservable()
-                            .Delay(softDelay)))
+                            .ToObservable()))
+                    .Synchronize()      // Suppress a lot of requests on concurrent
                 from scheduleDetail in scheduleDetails
                 select new Schedule(centerName, roomName, scheduleDetail.Date, scheduleDetail.TimeSlot, scheduleDetail.Status);
         }
 
         /// <summary>
-        /// Fetch current schedules with reactive.
+        /// Fetch current schedules on concurrent.
         /// </summary>
         /// <returns>Observable for schedule informations.</returns>
         /// <remarks>Soft delay defined for 3 seconds every fetch executions.</remarks>
-        public static IObservable<Schedule> FetchSchedules()
+        public static IObservable<Schedule> FetchSchedulesOnConcurrent()
         {
-            return FetchSchedules(TimeSpan.FromSeconds(3));
+            return FetchSchedulesOnConcurrent(TimeSpan.FromSeconds(3));
         }
 
         /// <summary>
-        /// Fetch current schedules with asynchronous.
+        /// Fetch current schedules on asynchronous.
         /// </summary>
         /// <param name="softDelay">Scraping delays.</param>
         /// <returns>Schedule informations.</returns>
         public static Task<Schedule[]> FetchSchedulesAsync(TimeSpan softDelay)
         {
-            return FetchSchedules(softDelay).ToArray().ToTask();
+            return FetchSchedulesOnConcurrent(softDelay).ToArray().ToTask();
         }
 
         /// <summary>
-        /// Fetch current schedules with asynchronous.
+        /// Fetch current schedules on asynchronous.
         /// </summary>
         /// <returns>Schedule informations.</returns>
         /// <remarks>Soft delay defined for 3 seconds every fetch executions.</remarks>
         public static Task<Schedule[]> FetchSchedulesAsync()
         {
-            return FetchSchedules().ToArray().ToTask();
+            return FetchSchedulesOnConcurrent().ToArray().ToTask();
         }
     }
 }

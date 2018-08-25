@@ -66,5 +66,10 @@ namespace Nagoya.LifelongLearningCenter
             this.TimeSlot = timeSlot;
             this.Status = status;
         }
+
+        public override string ToString()
+        {
+            return $"{this.CenterName}, {this.RoomName}, {this.Date:d}, {this.TimeSlot}, {this.Status}";
+        }
     }
 }
