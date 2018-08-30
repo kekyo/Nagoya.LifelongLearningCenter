@@ -53,6 +53,9 @@ namespace Nagoya.LifelongLearningCenter
         {
             using (var httpClient = new HttpClient())
             {
+                httpClient.DefaultRequestHeaders.Add(
+                    "User-Agent",
+                    "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.3; WOW64; Trident/7.0; Touch; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729; Tablet PC 2.0)");
                 Fetching?.Invoke(null, new FetchingEventArgs(url));
                 try
                 {

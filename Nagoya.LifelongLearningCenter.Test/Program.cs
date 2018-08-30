@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Linq;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
 
@@ -27,10 +28,16 @@ namespace Nagoya.LifelongLearningCenter
         private static async Task MainAsync(string[] args)
         {
             // For debugging purpose
-            InformationController.Fetching += (_, e) => Console.WriteLine($"Fetching: {e.Url}");
-            InformationController.Fetched += (_, e) => Console.WriteLine($"Fetched: {e.Url}");
+            //InformationController.Fetching += (_, e) => Console.WriteLine($"Fetching: {e.Url}");
+            //InformationController.Fetched += (_, e) => Console.WriteLine($"Fetched: {e.Url}");
 
+            // Filter by free room at afternoon or evening in Saturday, 2018. And groups by date and time slot.
             await InformationController.FetchSchedulesOnConcurrent()
+                .Where(schedule =>
+                     schedule.Date.Year == 2018 &&
+                     schedule.Date.DayOfWeek == DayOfWeek.Saturday &&
+                     (schedule.TimeSlot == TimeSlot.Afternoon || schedule.TimeSlot == TimeSlot.Evening) &&
+                     schedule.Status == Status.Free)
                 .ForEachAsync(schedule => Console.WriteLine(schedule.ToString()));
         }
 
